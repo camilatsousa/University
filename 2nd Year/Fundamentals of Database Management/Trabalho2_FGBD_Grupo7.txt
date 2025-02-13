@@ -1,0 +1,239 @@
+Alice Rocha, 105399, CDB1PL
+Francisca Niehus, 104990, CDB1PL
+Maria Pereira, 105840, CDB1PL
+
+
+				                 Trabalho de Fundamentos e Gestão de Base de Dados
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---------------Limpar a base
+
+MariaDB [imdb]> flush query cache;
+Query OK, 0 rows affected (0,000 sec)
+
+MariaDB [imdb]> select("Alice Rocha, Francisca Niehus, Maria Pereira");
++----------------------------------------------+
+| Alice Rocha, Francisca Niehus, Maria Pereira |
++----------------------------------------------+
+| Alice Rocha, Francisca Niehus, Maria Pereira |
++----------------------------------------------+
+1 row in set (0,000 sec)
+
+
+---------------Criação de índices
+
+MariaDB [imdb]> alter table namebasics  add index(primaryName);
+Query OK, 0 rows affected (21,525 sec)              
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> alter table titlebasics add index(genres);
+Query OK, 0 rows affected (13,067 sec)              
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> alter table titleprincipals add index(nconst);
+Query OK, 0 rows affected (1 min 0,661 sec)         
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> alter table namebasics add index(nconst);
+Query OK, 0 rows affected (8,886 sec)               
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> alter table titleprincipals add index(tconst);
+Query OK, 0 rows affected (35,243 sec)              
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> alter table titlebasics add index(tconst);
+Query OK, 0 rows affected (6,219 sec)               
+Records: 0  Duplicates: 0  Warnings: 0
+
+
+---------------Observação das obras do Robert de Niro
+
+MariaDB [imdb]> select titlebasics.tconst,titlebasics.genres from titlebasics,titleprincipals,namebasics 
+    -> where namebasics.primaryName = "Robert de Niro" and titleprincipals.tconst = titlebasics.tconst and namebasics.nconst = titleprincipals.nconst and length(titlebasics.genres)>0;
++------------+-------------------------------+
+| tconst     | genres                        |
++------------+-------------------------------+
+| tt0063036  | Comedy,Drama                  |
+| tt0064924  | Drama                         |
+| tt0065836  | Comedy,Drama                  |
+| tt0069765  | Drama,Sport                   |
+| tt0070379  | Crime,Drama,Thriller          |
+| tt0071562  | Crime,Drama                   |
+| tt0072694  | Documentary                   |
+| tt0074084  | Drama,History                 |
+| tt0074777  | Drama,Romance                 |
+| tt0075314  | Crime,Drama                   |
+| tt0076451  | Drama,Music,Musical           |
+| tt0077416  | Drama,War                     |
+| tt0081398  | Biography,Drama,Sport         |
+| tt0083232  | Crime,Drama                   |
+|                    ...                     |
++------------+-------------------------------+
+402 rows in set (0,006 sec)
+
+
+---------------Criação de uma view paras obras do Robert
+
+MariaDB [imdb]> create view obras_do_roberto (genre) as select distinct SUBSTRING_INDEX(genres, ',', 1) FROM titlebasics as genre where length(genres)>0 union select distinct SUBSTRING_INDEX(SUBSTRING_INDEX(genres, ',', 2),',', -1) as genre FROM titlebasics where length(genres)>0 union select distinct SUBSTRING_INDEX(SUBSTRING_INDEX(genres, ',', 4),',', -1) as genre FROM titlebasics where length(genres)>0 union select distinct SUBSTRING_INDEX(SUBSTRING_INDEX(genres, ',', 3),',', -1) as genre FROM titlebasics where length(genres)>0;
+Query OK, 0 rows affected (0,026 sec)
+
+
+---------------Contagem dos diferentes géneros de obras do Robert de Niro
+
+MariaDB [imdb]> select obras_do_roberto.genre, count(distinct titlebasics.tconst) as n_obras_roberto from namebasics, titleprincipals, titlebasics, obras_do_roberto where primaryName = "Robert de Niro" and titlebasics.tconst = titleprincipals.tconst and titleprincipals.nconst = namebasics.nconst and instr(genres,obras_do_roberto.genre)>0 group by genre;
++-------------+-----------------+
+| genre       | n_obras_roberto |
++-------------+-----------------+
+| Action      |              20 |
+| Adventure   |               7 |
+| Animation   |               5 |
+| Biography   |              24 |
+| Comedy      |             112 |
+| Crime       |              51 |
+| Documentary |              79 |
+| Drama       |              96 |
+| Family      |               6 |
+| Fantasy     |               4 |
+| Game-Show   |               2 |
+| History     |               8 |
+| Horror      |               7 |
+| Music       |              34 |
+| Musical     |               3 |
+| Mystery     |               6 |
+| News        |              77 |
+| Reality-TV  |               1 |
+| Romance     |              15 |
+| Sci-Fi      |               3 |
+| Short       |              51 |
+| Sport       |               7 |
+| Talk-Show   |             127 |
+| Thriller    |              26 |
+| War         |               1 |
++-------------+-----------------+
+25 rows in set (8,344 sec)
+
+
+---------------Criação de uma tabela com a contagem dos diferentes géneros de obras do Robert de Niro
+
+MariaDB [imdb]> create table tabelita (genre Varchar(52), n_obras_roberto Int);
+Query OK, 0 rows affected (0,044 sec)
+
+MariaDB [imdb]> insert into tabelita (genre, n_obras_roberto) select obras_do_roberto.genre, count(distinct titlebasics.tconst) from namebasics, titleprincipals, titlebasics, obras_do_roberto where primaryName = "Robert de Niro" and titlebasics.tconst = titleprincipals.tconst and titleprincipals.nconst = namebasics.nconst and instr(genres,obras_do_roberto.genre)>0 group by genre;
+Query OK, 25 rows affected (14,427 sec)
+Records: 25  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> select * from tabelita;
++-------------+-----------------+
+| genre       | n_obras_roberto |
++-------------+-----------------+
+| Action      |              20 |
+| Adventure   |               7 |
+| Animation   |               5 |
+| Biography   |              24 |
+| Comedy      |             112 |
+| Crime       |              51 |
+| Documentary |              79 |
+| Drama       |              96 |
+| Family      |               6 |
+| Fantasy     |               4 |
+| Game-Show   |               2 |
+| History     |               8 |
+| Horror      |               7 |
+| Music       |              34 |
+| Musical     |               3 |
+| Mystery     |               6 |
+| News        |              77 |
+| Reality-TV  |               1 |
+| Romance     |              15 |
+| Sci-Fi      |               3 |
+| Short       |              51 |
+| Sport       |               7 |
+| Talk-Show   |             127 |
+| Thriller    |              26 |
+| War         |               1 |
++-------------+-----------------+
+25 rows in set (0,001 sec)
+
+
+---------------Conclusão
+
+MariaDB [imdb]> select * from tabelita where n_obras_roberto = (select Max(n_obras_roberto)from tabelita);
++-----------+-----------------+
+| genre     | n_obras_roberto |
++-----------+-----------------+
+| Talk-Show |             127 |
++-----------+-----------------+
+1 row in set (0,002 sec)
+
+
+---------------Reposição da base de dados
+
+MariaDB [imdb]> drop index primaryName on namebasics;
+Query OK, 0 rows affected (0,038 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> drop index genres on titlebasics;
+Query OK, 0 rows affected (0,034 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> drop index nconst on titleprincipals;
+Query OK, 0 rows affected (0,040 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> drop index nconst on namebasics;
+Query OK, 0 rows affected (0,029 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> drop index tconst on titleprincipals;
+Query OK, 0 rows affected (0,034 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> drop index tconst on titlebasics;
+Query OK, 0 rows affected (0,031 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+MariaDB [imdb]> drop view obras_do_roberto;
+Query OK, 0 rows affected (0,002 sec)
+
+MariaDB [imdb]> drop table tabelita;
+Query OK, 0 rows affected (0,006 sec)
+
+
+
+
+--------------------------------------------------------------------Código utilizado----------------------------------------------------------------
+
+flush query cache;
+select "Alice Rocha, Francisca Niehus, Maria Pereira";
+
+alter table namebasics  add index(primaryName);
+alter table titlebasics add index(genres);
+alter table titleprincipals add index(nconst);
+alter table namebasics add index(nconst);
+alter table titleprincipals add index(tconst);
+alter table titlebasics add index(tconst);
+
+select titlebasics.tconst,titlebasics.genres from titlebasics,titleprincipals,namebasics where namebasics.primaryName = "Robert de Niro" and titleprincipals.tconst = titlebasics.tconst and namebasics.nconst = titleprincipals.nconst and length(titlebasics.genres)>0;
+
+create view obras_do_roberto (genre) as select distinct SUBSTRING_INDEX(genres, ',', 1) FROM titlebasics as genre where length(genres)>0 union select distinct SUBSTRING_INDEX(SUBSTRING_INDEX(genres, ',', 2),',', -1) as genre FROM titlebasics where length(genres)>0 union select distinct SUBSTRING_INDEX(SUBSTRING_INDEX(genres, ',', 4),',', -1) as genre FROM titlebasics where length(genres)>0 union select distinct SUBSTRING_INDEX(SUBSTRING_INDEX(genres, ',', 3),',', -1) as genre FROM titlebasics where length(genres)>0;
+
+select obras_do_roberto.genre, count(distinct titlebasics.tconst) as n_obras_roberto from namebasics, titleprincipals, titlebasics, obras_do_roberto where primaryName = "Robert de Niro" and titlebasics.tconst = titleprincipals.tconst and titleprincipals.nconst = namebasics.nconst and instr(genres,obras_do_roberto.genre)>0 group by genre;
+
+create table tabelita (genre Varchar(52), n_obras_roberto Int);
+insert into tabelita (genre, n_obras_roberto) select obras_do_roberto.genre, count(distinct titlebasics.tconst) from namebasics, titleprincipals, titlebasics, obras_do_roberto where primaryName = "Robert de Niro" and titlebasics.tconst = titleprincipals.tconst and titleprincipals.nconst = namebasics.nconst and instr(genres,obras_do_roberto.genre)>0 group by genre;
+select * from tabelita;
+
+select * from tabelita where n_obras_roberto = (select Max(n_obras_roberto)from tabelita);
+
+drop index primaryName on namebasics;
+drop index genres on titlebasics;
+drop index nconst on titleprincipals;
+drop index nconst on namebasics;
+drop index tconst on titleprincipals;
+drop index tconst on titlebasics;
+drop view obras_do_roberto;
+drop table tabelita;
+
+
+

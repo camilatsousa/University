@@ -1,0 +1,654 @@
+---
+title: "Trabalho Modelação estocástica"
+author: ""
+date: "2024-10-31"
+output: html_document
+---
+
+```{r}
+#remover tudo
+rm(list=ls(all=TRUE))
+
+#bibliotecas
+library(simmer)
+library(magrittr)
+library(simmer.plot)
+```
+
+# Sistema de Marcação de Exames Médicos
+
+  A marcação de exames médicos é um elemento fundamental na prestação de cuidados de saúde, influenciando diretamente a experiência do utente e a eficiência do sistema. Com a evolução das tecnologias, a possibilidade de agendamentos online tem diminuído a necessidade de atendimentos presenciais, mas muitos pacientes ainda preferem interagir diretamente com os serviços, seja pessoalmente ou por telefone. Isso torna essencial a análise de como os centros de saúde gerem esses processos de marcação.
+  
+  Neste contexto, inicialmente foram definidos cinco cenários distintos que exploram diferentes estratégias para otimizar o processo de marcação de exames. Cada cenário foi concebido para investigar como a alocação de recursos, a gestão do tempo de espera e a priorização de chamadas influenciam a eficiência do atendimento. Através da simulação de cada situação, é possível perceber como diferentes abordagens afetam o fluxo de trabalho no centro de exames e a capacidade de atender as necessidades dos utentes.
+
+  A análise desses cenários permite não só identificar as vantagens e desvantagens de cada estratégia, mas também fornecer insights valiosos que podem guiar a implementação de melhorias no sistema de marcação, entendendo os trade-offs que cada abordagem apresenta e as consequências das escolhas feitas no atendimento. Através dessa investigação, o objetivo é oferecer recomendações que aumentem a eficácia operacional e garantam que a qualidade do atendimento permaneça uma prioridade no contexto dos centros de exames médicos.
+
+# Cenário1
+
+  Primeiramente, analisamos o Cenário 1, onde o centro de exames conta apenas com dois postos abertos para atendimento tanto presencial quanto telefónico. 
+
+```{r}
+set.seed(2024)
+
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto",1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1) 
+
+chamadas <- trajectory("cliente em chamada") %>%
+  seize("posto",1) %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1)
+
+envs1 <- lapply(1:100, function(i) {
+    simmer("Centro de Exames") %>%
+      add_resource("posto", 2) %>%
+      add_generator("Cliente presencial", clientesp, function() rexp(1, 1/15)) %>%
+      add_generator("Cliente em chamada", chamadas, function() rexp(1, 1/5)) %>%
+      run(until = 240)
+})
+```
+
+
+```{r}
+# Estatísticas:
+all_arrivals <- do.call(rbind, lapply(envs1, get_mon_arrivals))
+all_resources <- do.call(rbind, lapply(envs1, get_mon_resources))
+
+all_arrivals$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada <- all_arrivals[all_arrivals$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral1 <- mean(all_arrivals$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada <- arrivals_chamada$end_time - arrivals_chamada$start_time - arrivals_chamada$activity_time
+media_tempo_espera_chamada1 <- mean(tempos_espera_chamada)
+
+#média de pacientes em espera
+media_pacientes_espera1 <- mean(all_resources$queue)
+
+tempo_servico_geral1
+media_tempo_espera_chamada1
+media_pacientes_espera1
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs1)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs1), metric = "waiting_time")# evolução do tempo de espera
+```
+### Conclusão
+
+  A análise dos gráficos e dos resultados da simulação revela uma situação de sobrecarga no sistema de atendimento. O gráfico de Utilização de Recursos mostra um crescimento constante do número de pacientes na fila ao longo do tempo, evidenciando que a procura pelo recurso "posto" está a ultrapassar a sua capacidade de atendimento. Este padrão é corroborado pelo gráfico da Evolução do Tempo de Espera, onde a linha azul indica um aumento linear no tempo de espera dos pacientes, reforçando a ideia de que o sistema está a operar no limite.
+
+  A simulação quantifica este cenário de sobrecarga: os pacientes em chamada aguardam, em média, 20,62 minutos para serem atendidos, e há um número médio de 6,82 pacientes na fila. A elevada taxa de utilização do recurso "posto", próxima de 100%, destaca a necessidade de expandir a capacidade de atendimento ou de redistribuir a procura para reduzir os tempos de espera. 
+
+  Em suma, estes resultados sugerem que a introdução de mais recursos ou melhorias no processo de atendimento seriam essenciais para melhorar a eficiência do sistema e a qualidade do serviço prestado aos pacientes.
+
+# Cenário2
+
+  Com base nas limitações observadas no sistema de atendimento, é pertinente analisar o Cenário 2, que prioriza as chamadas telefónicas em relação aos atendimentos presenciais. Esta abordagem é justificada pela maior frequência das chamadas, que contribuem significativamente para o congestionamento do sistema. Além disso, a fila para atendimentos presenciais não apresenta o mesmo ritmo de preenchimento, permitindo uma gestão mais equilibrada dos recursos. 
+
+```{r}
+set.seed(2024)
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto",1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1)
+
+chamadas <- trajectory("cliente em chamada") %>%
+  seize("posto",1) %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1)
+
+envs2 <- lapply(1:100, function(i) {
+    simmer("Centro de Exames") %>%
+    add_resource("posto",2) %>%
+    add_generator("Cliente presencial", clientesp, function() rexp(1,1/15)) %>%
+    add_generator("Cliente em chamada", chamadas, function() rexp(1,1/5),priority = 1) %>%
+    run(until = 240)
+})
+```
+
+```{r}
+# Estatísticas:
+all_arrivals2 <- do.call(rbind, lapply(envs2, get_mon_arrivals))
+all_resources2 <- do.call(rbind, lapply(envs2, get_mon_resources))
+
+all_arrivals2$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals2$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada2 <- all_arrivals2[all_arrivals2$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral2 <- mean(all_arrivals2$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada2 <- arrivals_chamada2$end_time - arrivals_chamada2$start_time - arrivals_chamada2$activity_time
+media_tempo_espera_chamada2 <- mean(tempos_espera_chamada2)
+
+#média de pacientes em espera
+media_pacientes_espera2 <- mean(all_resources2$queue)
+
+tempo_servico_geral2
+media_tempo_espera_chamada2
+media_pacientes_espera2
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs2)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs2), metric = "waiting_time")# evolução do tempo de espera
+```
+
+### Conclusão: 
+  No Cenário 2, a priorização das chamadas telefónicas em relação aos atendimentos presenciais resultou em melhorias significativas do sistema. O tempo médio de espera para os clientes em chamada foi reduzido de 20,62 minutos para 16,96 minutos, resultando numa diminuição de 3,66 minutos. Além disso, embora as diferenças nos gráficos não tenham sido muito grandes, a análise ainda demonstra uma tendência de melhoria. A redução no tempo de espera indica que a estratégia ajudou a aliviar a pressão sobre o atendimento.
+
+Entretanto, o número médio de pacientes na fila aumentou de 6,82 para 7,49, uma diferença de 0,67 pacientes. Isso sugere que, apesar da melhoria no tempo de espera, a demanda por atendimento está ainda a crescer, o que pode indicar a necessidade de avaliar a capacidade do sistema.
+
+Embora a utilização dos recursos não tenha apresentado mudanças visíveis, a otimização na alocação dos mesmos foi evidente. A priorização das chamadas, combinada com possíveis expansões de capacidade, pode resultar num serviço ainda mais eficaz e satisfatório.
+
+
+# Cenário3
+
+  Após analisar os resultados do Cenário 2, onde a priorização das chamadas telefónicas levou a melhorias no tempo de espera dos clientes, surge a hipótese de que uma abordagem ainda mais agressiva poderia potencialmente otimizar ainda mais o atendimento, neste caso, para os pacientes em chamada.
+  No Cenário 3, consideramos que as chamadas não ficam em fila de espera, sendo atendidas imediatamente. Quando um operador está a atender um cliente presencialmente, esse atendimento é interrompido para priorizar a chamada. 
+  Essa mudança visa maximizar a eficiência no atendimento telefónico, permitindo que as chamadas sejam atendidas de forma mais rápida. No entanto, esta estratégia gera um dilema sobre a gestão de prioridades.
+  
+```{r}
+set.seed(2024)
+
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto",1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1) 
+
+chamadas <- trajectory("cliente em chamada") %>%
+  seize("posto",1) %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1)
+
+envs3 <- lapply(1:100, function(i) {
+    simmer("Centro de Exames") %>%
+    add_resource("posto",2, preemptive = TRUE) %>%
+    add_generator("Cliente presencial", clientesp, function() rexp(1,1/15)) %>%
+    add_generator("Cliente em chamada", chamadas, function() rexp(1,1/5),priority = 1) %>%
+    run(until = 240)
+})
+```
+
+```{r}
+# Estatísticas:
+all_arrivals3 <- do.call(rbind, lapply(envs3, get_mon_arrivals))
+all_resources3 <- do.call(rbind, lapply(envs3, get_mon_resources))
+
+all_arrivals3$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals3$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada3 <- all_arrivals3[all_arrivals3$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral3 <- mean(all_arrivals3$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada3 <- arrivals_chamada3$end_time - arrivals_chamada3$start_time - arrivals_chamada3$activity_time
+media_tempo_espera_chamada3 <- mean(tempos_espera_chamada3)
+
+#média de pacientes em espera
+media_pacientes_espera3 <- mean(all_resources3$queue)
+
+media_tempo_espera_chamada3
+media_pacientes_espera3
+tempo_servico_geral3
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs3)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs3), metric = "waiting_time")# evolução do tempo de espera
+```
+### Conclusão:
+
+  Em termos de médias, o tempo de espera para os clientes em chamada foi reduzido de 16,96 minutos no Cenário 2 para 16,65 minutos no Cenário 3, sugerindo uma leve melhoria no atendimento telefónico. No entanto, essa redução reflete uma mudança na composição da fila: com o atendimento imediato das chamadas, mais pacientes foram atendidos pelo telefone, enquanto os atendimentos presenciais enfrentaram interrupções frequentes.
+  
+  Nos gráficos, o efeito dessa mudança é particularmente visível na evolução do tempo de espera. Diferente do Cenário 2, onde a linha do gráfico mostrava um crescimento linear, no Cenário 3 a linha apresentou levemente uma curva com concavidade voltada para cima a partir dos 175 minutos. Esse detalhe indica uma estabilização na taxa de crescimento do tempo de espera, sinalizando um certo alívio na fila telefónica ao custo de mais interrupções presenciais.
+
+  Além disso, o número médio de pacientes na fila aumentou de 7,49 para 8,03, sugerindo que a priorização das chamadas trouxe uma leve elevação na carga total de espera. Esses resultados apontam para uma redistribuição de carga no sistema, onde a ligeira melhoria no tempo de espera das chamadas ocorre à custa da fluidez do atendimento presencial, levantando a necessidade de equilibrar as prioridades entre os dois tipos de atendimento.
+  
+
+# Cenário 4
+
+  Após a análise dos Cenários 2 e 3, constatou-se que a priorização das chamadas telefónicas reduziu o tempo de espera para os clientes em chamada, mas teve um impacto negativo nos atendimentos presenciais, que enfrentaram mais interrupções e filas ligeiramente mais longas. Esse desequilíbrio aponta para a necessidade de uma estratégia mais equilibrada, que possa reduzir o tempo de espera sem comprometer a experiência dos pacientes que se encontram fisicamente no local.
+
+  No Cenário 4, optamos por manter as chamadas em fila de espera, mas com um limite de tempo: caso aguardem mais de 10 minutos, as chamadas são automaticamente desligadas, resultando na perda desse contacto. Esta configuração procura evitar o crescimento descontrolado da fila telefónica e aliviar a pressão sobre o sistema, permitindo que o operador distribua a atenção de forma mais equitativa entre os atendimentos telefónicos e presenciais. Com esta abordagem, pretende-se verificar se a restrição do tempo de espera para as chamadas contribui para uma gestão mais equilibrada e eficiente do sistema, beneficiando igualmente os pacientes presenciais.
+
+  No entanto, é importante reconhecer a principal desvantagem desta estratégia: o risco de perder contactos, o que pode comprometer a satisfação dos clientes que tentam aceder ao serviço por telefone.
+  
+```{r}
+set.seed(2024)
+
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto",1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1) 
+
+chamadas <- trajectory("cliente em chamada") %>%
+  renege_in(10, out = trajectory("Desligar a chamada")) %>%
+  seize("posto",1) %>%
+  renege_abort() %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release("posto",1) 
+
+
+envs4 <- lapply(1:100, function(i) {
+    simmer("Centro de Exames") %>%
+    add_resource("posto",2) %>%
+    add_generator("Cliente presencial", clientesp, function() rexp(1,1/15)) %>%
+    add_generator("Cliente em chamada", chamadas, function() rexp(1,1/5),priority = 1) %>%
+    run(until = 240)
+})
+```
+
+```{r}
+# Estatísticas:
+all_arrivals4 <- do.call(rbind, lapply(envs4, get_mon_arrivals))
+all_resources4 <- do.call(rbind, lapply(envs4, get_mon_resources))
+
+all_arrivals4$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals4$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada4 <- all_arrivals4[all_arrivals4$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral4 <- mean(all_arrivals4$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada4 <- arrivals_chamada4$end_time - arrivals_chamada4$start_time - arrivals_chamada4$activity_time
+media_tempo_espera_chamada4 <- mean(tempos_espera_chamada4)
+
+#média de pacientes em espera
+media_pacientes_espera4 <- mean(all_resources4$queue)
+
+#número de chamadas perdidas
+chamadas_perdidas4 <- sum(!arrivals_chamada4$finished)/100
+
+tempo_servico_geral4
+media_tempo_espera_chamada4
+media_pacientes_espera4
+chamadas_perdidas4
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs4)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs4), metric = "waiting_time")# evolução do tempo de espera
+```
+
+### Conclusão:
+  A análise dos resultados do Cenário 4 revela mudanças significativas em relação aos cenários anteriores, mesmo com a utilização dos recursos a manter-se constante. Apesar de a capacidade dos balcões não ter mudado, a introdução de um limite de 10 minutos para as chamadas em espera levou a uma redução considerável no acúmulo de contactos na fila, que diminuiu substancialmente. Essa estratégia resulta numa gestão mais eficiente do atendimento, refletindo uma diminuição acentuada no tempo médio de espera para os clientes em chamada, que agora é de 4,85 minutos, comparado com os 16,65 minutos do Cenário 3.
+
+  Além disso, o número médio de pacientes na fila de espera também reduziu, passando de 8,03 para 3,17. Essa redução indica que a abordagem ajudou a equilibrar a carga de atendimento, permitindo uma distribuição mais ágil entre chamadas e atendimentos presenciais. No entanto, é importante considerar o trade-off desta estratégia: ao desligar chamadas após 10 minutos, existe o risco de perder contactos valiosos, o que pode comprometer a capacidade dos pacientes de agendar consultas e exames, impactando negativamente a continuidade dos cuidados e a satisfação dos utentes. 
+  
+# Cenário5
+
+  Até aqui, temos utilizado os dois postos para atender tanto as chamadas telefónicas quanto os pacientes presenciais. Embora a eficiência do sistema tenha melhorado com a introdução de limites de espera para chamadas, isso levantou preocupações sobre a perda de contactos e a dificuldade em agendar consultas.
+
+  Desta forma, a proposta para o Cenário 5 é dedicar ambos os postos exclusivamente ao atendimento presencial, transferindo o atendimento das chamadas para um operador em back office. Essa mudança visa eliminar as interrupções para os pacientes presentes, proporcionando uma experiência mais fluida. Contudo, é importante considerar que desligar as chamadas após um tempo de espera pode ainda resultar na perda de contactos importantes, mas não será com a mesma frequência, visto que o backoffice não tem a responsabilidade de atender os pacientes presenciais simultaneamente.
+
+```{r}
+set.seed(2024)
+
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto presencial",1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto presencial",1)
+
+chamadas <- trajectory("cliente em chamada") %>%
+  renege_in(10, out = trajectory("Desligar a chamada")) %>%
+  seize("posto chamada",1) %>%
+  renege_abort() %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release("posto chamada",1)
+
+
+envs5 <- lapply(1:100, function(i) {
+    simmer("Centro de Exames") %>%
+    add_resource("posto presencial",2) %>%
+    add_resource("posto chamada",1) %>%
+    add_generator("Cliente presencial", clientesp, function() rexp(1,1/15)) %>%
+    add_generator("Cliente em chamada", chamadas, function() rexp(1,1/5))%>%
+    run(until = 240)
+})
+```
+
+```{r}
+# Estatísticas:
+all_arrivals5 <- do.call(rbind, lapply(envs5, get_mon_arrivals))
+all_resources5 <- do.call(rbind, lapply(envs5, get_mon_resources))
+
+all_arrivals5$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals5$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada5 <- all_arrivals5[all_arrivals5$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral5 <- mean(all_arrivals5$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada5 <- arrivals_chamada5$end_time - arrivals_chamada5$start_time - arrivals_chamada5$activity_time
+media_tempo_espera_chamada5 <- mean(tempos_espera_chamada5)
+
+#média de pacientes em espera
+media_pacientes_espera5 <- mean(all_resources5$queue)
+
+#número de chamadas perdidas
+chamadas_perdidas5 <- sum(!arrivals_chamada5$finished)/100
+
+# média do número de chamada em espera
+chamada_queue5 <- subset(all_resources5, resource == "posto chamada")
+media_chamada_espera5 <- mean(chamada_queue5$queue)
+
+
+tempo_servico_geral5
+media_tempo_espera_chamada5
+media_pacientes_espera5
+chamadas_perdidas5
+media_chamada_espera5
+
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs5)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs5), metric = "waiting_time")# evolução do tempo de espera
+```
+
+### Conclusão:
+
+A implementação de uma divisão de funções entre os operadores de front office e back office resultou numa clara diferenciação na utilização dos recursos. A utilização dos postos de atendimento telefónico aproxima-se dos 100%, enquanto o atendimento presencial atinge apenas cerca de 17%. Embora a perda de contactos após 10 minutos represente uma desvantagem, o fluxo de atendimento telefónico demonstrou-se eficiente para as chamadas que foram atendidas, com uma média de espera de apenas 7 minutos, e tempo de serviço/atendimento de aproximadamente 3.8 minutos. Em contrapartida, os postos de atendimento presencial permanecem substancialmente subutilizados, levantando sérias questões sobre a eficácia da alocação atual de recursos.
+
+# Cenário 6
+
+  Enquanto no cenário anterior os postos backoffice estavam sobrecarregados, com uma taxa de utilização quase total, os postos presenciais estavam subutilizados, o que já era de esperar visto que as chamadas surgem 3 vezes mais que pacientes presenciais. Embora o atendimento telefónico tenha uma média de espera razoável, a perda de contatos após 10 minutos é um problema. Com o Cenário 6, procuramos melhorar o equilíbrio entre os postos frontoffice e backoffice, para reduzir as perdas de contatos e aumentar a eficiência do sistema. 
+  Neste haverá apenas um posto a atender exclusivamente clientes presenciais e 2 a atender exclusivamente clientes por chamada.
+  
+```{r}
+set.seed(2024)
+
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto presencial",1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto presencial",1)
+
+chamadas <- trajectory("cliente em chamada") %>%
+  renege_in(10, out = trajectory("Desligar a chamada")) %>%
+  seize("posto chamada",1) %>%
+  renege_abort() %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release("posto chamada",1)
+
+
+envs6 <- lapply(1:100, function(i) {
+    simmer("Centro de Exames") %>%
+    add_resource("posto presencial",1) %>%
+    add_resource("posto chamada",2) %>%
+    add_generator("Cliente presencial", clientesp, function() rexp(1,1/15)) %>%
+    add_generator("Cliente em chamada", chamadas, function() rexp(1,1/5))%>%
+    run(until = 240)
+})
+```
+
+```{r}
+# Estatísticas:
+all_arrivals6 <- do.call(rbind, lapply(envs6, get_mon_arrivals))
+all_resources6 <- do.call(rbind, lapply(envs6, get_mon_resources))
+
+all_arrivals6$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals6$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada6 <- all_arrivals6[all_arrivals6$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral6 <- mean(all_arrivals6$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada6 <- arrivals_chamada6$end_time - arrivals_chamada6$start_time - arrivals_chamada6$activity_time
+media_tempo_espera_chamada6 <- mean(tempos_espera_chamada6)
+
+#média de pacientes em espera
+media_pacientes_espera6 <- mean(all_resources6$queue)
+
+#número de chamadas perdidas
+chamadas_perdidas6 <- sum(!arrivals_chamada6$finished)/100
+
+# média do número de chamadas em espera 
+chamada_queue6 <- subset(all_resources6, resource == "posto chamada")
+media_chamada_espera6 <- mean(chamada_queue6$queue)
+
+tempo_servico_geral6
+media_chamada_espera6
+media_tempo_espera_chamada6
+media_pacientes_espera6
+chamadas_perdidas6
+
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs6)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs6), metric = "waiting_time")# evolução do tempo de espera
+```
+
+
+### Conclusão:
+  
+  No Cenário 6, a redistribuição dos recursos entre os postos de atendimento resultou num melhor equilíbrio, com a redução da ocupação dos postos de chamadas (backoffice) e o aumento na utilização dos postos presenciais, contudo ainda pouco otimizada. Isto acontece porque, apesar do aumento da ocupação dos postos presenciais, o fato de haver apenas um posto dedicado ao atendimento presencial não justifica totalmente a alocação de um trabalhador para um posto que muitas vezes não é utilizado, já que os clientes presenciais são menos frequentes do que as chamadas, levando a uma subutilização de recursos.
+
+  Embora a alocação tenha melhorado a eficiência do sistema, com a diminuição das filas de espera e a redução do número de clientes a aguardar por atendimento, a sobrecarga dos postos de backoffice permanece. A troca de um segundo posto presencial por um segundo posto backoffice fez a diferença na fila de espera, mas ainda não resolve completamente o problema da sobrecarga nos atendimentos telefónicos.
+
+# Cenário 7
+  
+  Neste cenário a solução proposta é permitir que o posto presencial também atenda chamadas, de forma a otimizar ainda mais a utilização dos recursos, permitindo uma maior flexibilidade no atendimento, especialmente durante períodos de alta demanda. Isso pode melhorar a alocação dos postos e reduzir mais a sobrecarga dos backoffices, proporcionando um fluxo de atendimento mais equilibrado e eficiente.
+  
+```{r}
+set.seed(2024)
+
+# Definindo o atendimento presencial
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto presencial", 1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto presencial", 1)
+
+# Definindo o atendimento para chamadas
+chamadas <- trajectory("cliente em chamada") %>%
+  renege_in(10, out = trajectory("Desligar a chamada")) %>%
+  select(c("posto presencial", "posto chamada"), policy = "shortest-queue") %>%
+  seize_selected() %>%
+  renege_abort() %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release_selected()
+
+# Criação do ambiente de simulação
+envs7 <- lapply(1:100, function(i) {
+  simmer("Centro de Exames") %>%
+    add_resource("posto presencial", 1) %>%  # 1 posto presencial
+    add_resource("posto chamada", 2) %>%     # 2 postos de chamadas
+    add_generator("Cliente presencial", clientesp, function() rexp(1,1/15)) %>%
+    add_generator("Cliente em chamada", chamadas, function() rexp(1,1/5)) %>%
+    run(until = 240)
+})
+```
+
+```{r}
+# Estatísticas:
+all_arrivals7 <- do.call(rbind, lapply(envs7, get_mon_arrivals))
+all_resources7 <- do.call(rbind, lapply(envs7, get_mon_resources))
+
+all_arrivals7$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals7$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada7 <- all_arrivals7[all_arrivals7$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral7 <- mean(all_arrivals7$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada7 <- arrivals_chamada7$end_time - arrivals_chamada7$start_time - arrivals_chamada7$activity_time
+media_tempo_espera_chamada7 <- mean(tempos_espera_chamada7)
+
+#média de pacientes em espera
+media_pacientes_espera7 <- mean(all_resources7$queue)
+
+#número de chamadas perdidas
+chamadas_perdidas7 <- sum(!arrivals_chamada7$finished)/100
+
+tempo_servico_geral7
+media_tempo_espera_chamada7
+media_pacientes_espera7
+chamadas_perdidas7
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs7)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs7), metric = "waiting_time")# evolução do tempo de espera
+```
+
+  Observou-se um aumento nas filas de espera no atendimento presencial, que passaram a ser maiores do que as de chamadas. Isso indica que o posto presencial, ao acumular as duas funções, não conseguiu lidar de forma eficiente com o volume de chamadas, o que resultou numa maior sobrecarga do atendimento presencial em comparação com o backoffice.
+
+# Cenário 8
+
+Este cenário reflte o anterior, contudo foi decidido adicionar um posto presencial para atendimento presencial que também possa atender chamadas.
+
+```{r}
+set.seed(2024)
+
+clientesp <- trajectory("Cliente presencial") %>%
+  seize("posto presencial",1) %>% 
+  timeout(function() rlnorm(1, meanlog = log(1.5), sdlog = log(3.5))) %>%
+  release("posto presencial",1)
+
+chamadas <- trajectory("cliente em chamada") %>%
+  renege_in(10, out = trajectory("Desligar a chamada")) %>%
+  select(c("posto presencial", "posto chamada"), policy = "shortest-queue") %>%
+  seize_selected() %>%
+  renege_abort() %>%
+  timeout(function() rlnorm(1, meanlog = 4*log(1.5), sdlog = log(3.5))) %>%
+  release_selected()
+
+
+envs8 <- lapply(1:100, function(i) {
+    simmer("Centro de Exames") %>%
+    add_resource("posto presencial", 2) %>%
+    add_resource("posto chamada", 2) %>%
+    add_generator("Cliente presencial", clientesp, function() rexp(1, 1/15)) %>%
+    add_generator("Cliente em chamada", chamadas, function() rexp(1, 1/5)) %>%
+    run(until = 240)
+})
+```
+
+```{r}
+# Estatísticas:
+all_arrivals8 <- do.call(rbind, lapply(envs8, get_mon_arrivals))
+all_resources8 <- do.call(rbind, lapply(envs8, get_mon_resources))
+
+all_arrivals8$trajectory <- ifelse(grepl("cliente em chamada", all_arrivals8$name, ignore.case = TRUE), 
+                                   "cliente em chamada", 
+                                   "cliente presencial")
+
+arrivals_chamada8 <- all_arrivals8[all_arrivals8$trajectory == "cliente em chamada", ]
+
+# Tempo de serviço
+tempo_servico_geral8 <- mean(all_arrivals8$activity_time)
+
+#média de tempo em espera na chamada
+tempos_espera_chamada8 <- arrivals_chamada8$end_time - arrivals_chamada8$start_time - arrivals_chamada8$activity_time
+media_tempo_espera_chamada8 <- mean(tempos_espera_chamada8)
+
+#média de pacientes em espera
+media_pacientes_espera8 <- mean(all_resources8$queue)
+
+#número de chamadas perdidas
+chamadas_perdidas8 <- sum(!arrivals_chamada8$finished)/100
+
+tempo_servico_geral8
+media_tempo_espera_chamada8
+media_pacientes_espera8
+chamadas_perdidas8
+
+# Gráficos:
+  
+resources <- get_mon_resources(envs8)
+plot(resources, metric = "utilization") #Ocupação dos recursos
+plot(resources, metric = "usage", item = "queue")# Evolução dos clientes em lista de espera
+plot(get_mon_arrivals(envs8), metric = "waiting_time")# evolução do tempo de espera
+```
+
+Embora apresente uma melhoria em relação ao Cenário 7, a subutilização dos postos traz uma ineficiência nos custos operacionais, o que pode ser um problema para a rentabilidade do centro de exames. 
+
+# Comparação dos cenários
+
+```{r}
+# Carregar os pacotes necessários
+library(knitr)
+library(kableExtra)
+
+# Dados
+cenarios <- c("Cenário1", "Cenário2", "Cenário3", "Cenário4", "Cenário5", "Cenário6", "Cenário7", "Cenário8")
+
+tempo_servico_geral <- c(tempo_servico_geral1,tempo_servico_geral2,tempo_servico_geral3,
+                         tempo_servico_geral4, tempo_servico_geral5, tempo_servico_geral6,
+                         tempo_servico_geral7,tempo_servico_geral8)
+
+medias_tempos_espera_chamada <- c(media_tempo_espera_chamada1, media_tempo_espera_chamada2, media_tempo_espera_chamada3, media_tempo_espera_chamada4, media_tempo_espera_chamada5, media_tempo_espera_chamada6, media_tempo_espera_chamada7, media_tempo_espera_chamada8)
+
+medias_pacientes_espera <- c(media_pacientes_espera1, media_pacientes_espera2, media_pacientes_espera3, media_pacientes_espera4, media_pacientes_espera5, media_pacientes_espera6, media_pacientes_espera7, media_pacientes_espera8)
+
+chamadasPerdidas <- c(NA, NA, NA, chamadas_perdidas4, chamadas_perdidas5, chamadas_perdidas6, chamadas_perdidas7, chamadas_perdidas8)
+
+# Criar o dataframe
+df <- data.frame(Cenário = cenarios, tempos_espera_chamada = medias_tempos_espera_chamada, Pacientes_Espera = medias_pacientes_espera, Tempo_Servico = tempo_servico_geral, Chamadas_Perdidas = chamadasPerdidas)
+
+kable(df, 
+      col.names = c("Cenário", "Tempo Médio de Espera em Chamadas(min)", "Média de Pacientes em Espera", "Tempo Total de Servico(min)", "Chamadas Perdidas")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  column_spec(1, bold = TRUE) %>%  # Para deixar a primeira coluna em negrito
+  column_spec(2:4, width = "13em", latex_column_spec = "l")  # Ajuste de largura e form
+
+```
+
+```{r}
+library(gridExtra)
+
+# Gráfico 1 - Utilização dos recursos para o envs8
+resources8 <- get_mon_resources(envs8)
+plot1 <- plot(resources8, metric = "utilization")  # Título não precisa estar aqui, vamos usar na exibição
+
+# Gráfico 2 - Utilização dos recursos para o envs7
+resources7 <- get_mon_resources(envs7)
+plot2 <- plot(resources7, metric = "utilization")  # Título não precisa estar aqui também
+
+# Organizar os dois gráficos lado a lado com títulos personalizados
+grid.arrange(plot1 + ggtitle("Ocupação dos Recursos - Cenário 8"), 
+             plot2 + ggtitle("Ocupação dos Recursos - Cenário 7"), 
+             ncol = 2)
+
+```
+

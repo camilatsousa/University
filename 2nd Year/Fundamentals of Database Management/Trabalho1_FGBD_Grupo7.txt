@@ -1,0 +1,195 @@
+Alice Rocha, 105399, CDB1PL
+Francisca Niehus, 104990, CDB1PL
+Maria Pereira, 105840, CDB1PL
+Leonor Pereira, 104810, CDB1PL
+
+
+				                 Trabalho de Fundamentos e Gestão de Base de Dados
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Exercício 1)
+
+Primeiramente decidimos para cada tipo de filme listar o total de entradas de obras para adultos dos anos 80 sem recorrer a nenhum índice. 
+
++--------------+----------+
+| titletype    | count(*) |
++--------------+----------+
+| movie        |     3366 |
+| short        |       71 |
+| tvEpisode    |       42 |
+| tvMiniSeries |        6 |
+| tvMovie      |        2 |
+| tvSeries     |        3 |
+| tvSpecial    |        1 |
+| video        |     2823 |
+| videoGame    |       15 |
++--------------+----------+
+9 rows in set (1,857 sec)
+
+
+Com este comando conseguimos obter um tempo de realização equivalente a 1,857 segundos. Com este valor em mente decidimos adicionar índices para tentar otimizar o tempo de processamento do comando.
+
+Criamos três índices diferentes ("titletype", "starYear" e "isAdult") e após a implementação destes mesmos foi testado novamente o tempo de processamento da tabela.
+
+
++--------------+----------+
+| titletype    | count(*) |
++--------------+----------+
+| movie        |     3366 |
+| short        |       71 |
+| tvEpisode    |       42 |
+| tvMiniSeries |        6 |
+| tvMovie      |        2 |
+| tvSeries     |        3 |
+| tvSpecial    |        1 |
+| video        |     2823 |
+| videoGame    |       15 |
++--------------+----------+
+9 rows in set (0,724 sec)
+
+
+Chegamos à conclusão que o melhor tempo foi adquirido após a implementação dos três índices (0,724 segundos).
+
+
+-------------------------------------------------------Código------------------------------------------------------------
+
+select titletype, count(*) from titlebasics where isAdult='1' and startyear>=1980 and startyear<=1989 group by titletype;
+
+alter table titlebasics add index(titletype);
+alter table titlebasics add index(startYear);
+alter table titlebasics add index(isAdult);
+select titletype, count(*) from titlebasics where isAdult='1' and startyear>=1980 and startyear<=1989 group by titletype;
+
+drop index isAdult on titlebasics;
+drop index startYear on titlebasics;
+drop index titletype on titlebasics;
+
+-------------------------------------------------------------------------------------------------------------------------
+
+
+Exercício 2)
+
+Tal como no exercício anterior, inicialmente, o código criado foi testado sem a criação de índices. 
+
++----------+
+| count(*) |
++----------+
+|      233 |
++----------+
+1 row in set (22,453 sec)
+
+
+Como é possível observar na tabela acima apresentada, o tempo de processamento foi bastante elevado (22,453 segundos).
+Havia assim necessidade de uma criação de índices que minimizasse este tempo. Foram assim criados três novos índices: "primaryname", "characters" e "nconst" em ambas as tabelas.
+
++----------+
+| count(*) |
++----------+
+|      233 |
++----------+
+1 row in set (0,047 sec)
+
+Foi observada uma descida drástica no tempo de processamento após a implementação dos quatro índices (0,047 segundos).
+
+
+
+------------------------------------------------------------------------------------------Código----------------------------------------------------------------------------------------------
+
+select count(*) from namebasics, titleprincipals where namebasics.nconst = titleprincipals.nconst and namebasics.primaryname = "Woody Allen" and titleprincipals.characters = '[\'Himself\']';
+
+alter table namebasics add index (nconst);
+alter table titleprincipals add index (nconst);
+alter table namebasics add index(primaryName);
+alter table titleprincipals add index(characters);
+select count(*) from namebasics, titleprincipals where namebasics.nconst = titleprincipals.nconst and namebasics.primaryname = "Woody Allen" and titleprincipals.characters = '[\'Himself\']';
+
+drop index nconst on titleprincipals;
+drop index nconst on namebasics;
+drop index primaryName on namebasics;
+drop index characters on titleprincipals;
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Exercício 3)
+
+Tal como nos exercícios anteriores, foi aplicado o mesmo método, testando inicialmente o código sem índices e a seguir com quatro índices (os mesmos utilizados o exercício anterior).
+
++-----------------------------------------------------------------+
+| Títulos do Woody                                                |
++-----------------------------------------------------------------+
+| To Woody Allen from Europe with Love                            |
+| Hail Sid Caesar! The Golden Age of Comedy                       |
+| The Outsider                                                    |
+| Filmmakers vs. Tycoons                                          |
+| Filmmakers in Action                                            |
+| Je t'aime... moi non plus: Artistes et critiques                |
+| To My Great Chagrin: The Unbelievable Story of Brother Theodore |
+| The Ballad of Greenwich Village                                 |
+| Los Otros Guernicas                                             |
+| Sophia: Ieri, oggi, domani                                      |
+| The Language Master                                             |
+| ...But Film is My Mistress                                      |
+| Life Is Bearable at Times...                                    |
+| Vittorio D.                                                     |
+| Erroll Garner: No One Can Hear You Read                         |
+| The Unbelievers                                                 |
+| Ain't Misbehavin                                                |
+| Marvin Hamlisch: What He Did for Love                           |
+| Always at The Carlyle                                           |
+| Casablancas: The Man Who Loved Women                            |
+| Kaye Ballard - The Show Goes On                                 |
++-----------------------------------------------------------------+
+21 rows in set (4,943 sec)
+
+
+
++-----------------------------------------------------------------+
+| Títulos do Woody                                                |
++-----------------------------------------------------------------+
+| To Woody Allen from Europe with Love                            |
+| Hail Sid Caesar! The Golden Age of Comedy                       |
+| The Outsider                                                    |
+| Filmmakers vs. Tycoons                                          |
+| Filmmakers in Action                                            |
+| Je t'aime... moi non plus: Artistes et critiques                |
+| To My Great Chagrin: The Unbelievable Story of Brother Theodore |
+| The Ballad of Greenwich Village                                 |
+| Los Otros Guernicas                                             |
+| Sophia: Ieri, oggi, domani                                      |
+| The Language Master                                             |
+| ...But Film is My Mistress                                      |
+| Life Is Bearable at Times...                                    |
+| Vittorio D.                                                     |
+| Erroll Garner: No One Can Hear You Read                         |
+| The Unbelievers                                                 |
+| Ain't Misbehavin                                                |
+| Marvin Hamlisch: What He Did for Love                           |
+| Always at The Carlyle                                           |
+| Casablancas: The Man Who Loved Women                            |
+| Kaye Ballard - The Show Goes On                                 |
++-----------------------------------------------------------------+
+21 rows in set (0,052 sec)
+
+
+No primeiro teste o tempo de processamento foi 4,943 segundos enquanto no segundo foi 0,052 segundos; podemos assim concluir que foi benéfica à utilização dos índices.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------Código-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+select primarytitle as "Títulos do Woody" from titlebasics, titleprincipals, namebasics where namebasics.nconst=titleprincipals.nconst and titlebasics.tconst=titleprincipals.tconst and namebasics.primaryname="Woody Allen" and titleprincipals.characters = '[\'Himself\']' and titlebasics.titletype='movie';
+
+alter table namebasics add index (primaryname);
+alter table titleprincipals add index (characters);
+alter table titleprincipals add index (nconst);
+alter table namebasics add index (nconst);
+select primarytitle as "Títulos do Woody" from titlebasics, titleprincipals, namebasics where namebasics.nconst=titleprincipals.nconst and titlebasics.tconst=titleprincipals.tconst and namebasics.primaryname="Woody Allen" and titleprincipals.characters = '[\'Himself\']' and titlebasics.titletype='movie';
+
+drop index nconst on titleprincipals;
+drop index nconst on namebasics;
+drop index primaryName on namebasics;
+drop index characters on titleprincipals;
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+

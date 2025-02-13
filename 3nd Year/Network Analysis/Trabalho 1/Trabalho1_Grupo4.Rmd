@@ -1,0 +1,137 @@
+
+---
+title: "Trabalho1 - Análise de redes"
+author: "Grupo 4"
+date: "2024-12-11"
+output: word_document
+---
+
+```{r}
+#Importação das bibliotecas utilizadas
+
+library(igraph)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+# Leitura da rede
+
+rede <- read_graph("Ligações T1.txt", format = ("edgelist"), directed =F)
+plot(rede, vertex.color="red", vertex.label.color="white")
+```
+
+# Q1
+
+```{r}
+#dimensão
+vcount(rede)
+
+#ligações
+ecount(rede)
+```
+```{r}
+#densidade
+edge_density(rede)
+```
+
+```{r}
+#grau médio
+deg <- degree(rede, mode=c("all"))
+deg
+
+mean(deg)
+
+
+#distribuição de grau (e respetiva caracterização)
+summary(deg)
+
+```
+
+```{r}
+#gráfico da distribuição de grau
+todos_os_graus <- seq(min(deg), max(deg))  
+freq_table <- as.data.frame(table(factor(deg, levels = todos_os_graus))) %>%
+  rename(Grau = Var1, `Frequência Absoluta` = Freq)
+
+
+
+ggplot(freq_table, aes(x = factor(Grau), y = `Frequência Absoluta`)) +
+  geom_bar(stat = "identity", fill = "red", width = 0.9) +  
+  scale_x_discrete(expand = expansion(add = 1)) +  
+  scale_y_continuous(expand = c(0, 0)) +  
+  labs(
+    title = "Distribuição de Grau na Rede",
+    x = "Grau",
+    y = "Frequência Absoluta"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 7, angle = 45, hjust = 1),  
+    plot.title = element_text(hjust = 0.5)  
+  )
+```
+
+
+
+```{r}
+#parâmetro de heterogeneidade
+deg <- degree(rede, mode=c("all"))
+
+heterogeneidade <- mean(deg*deg)/(mean(deg)^2)
+heterogeneidade   
+
+```
+
+# Q2
+
+```{r}
+#associação de grau
+assortativity_degree(rede)  
+```
+
+# Q3
+
+```{r}
+#média dos comprimentos dos caminhos mais curtos
+mean_distance(rede)
+
+log(10, vcount(rede))
+```
+
+# Q4
+
+```{r}
+#coeficiente de clustering dos nodos
+coef_nodos <- round(transitivity(rede, type = "local"), 2)
+coef_nodos
+
+#média dos coeficientes de clustering dos nodos
+mean(coef_nodos, na.rm = TRUE)
+
+#coeficiente de clustering da rede
+transitivity(rede, type = "global")  #Um valor elevado, próximo de 1, indica a existência de muitos triângulos
+
+```
+
+
+# Q5
+
+```{r}
+#decomposição core da rede
+k_core <- coreness(rede)
+
+#numero de shells
+max(k_core)
+
+#dimensão de cada uma
+freq_table <- as.data.frame(table(k_core)) %>%
+  rename(`Shell` = k_core, `Frequência Absoluta` = Freq)
+
+print(freq_table)
+
+
+plot(rede, vertex.size = k_core*5, vertex.label= k_core, vertex.color="red", vertex.label.color="white")
+
+```
+

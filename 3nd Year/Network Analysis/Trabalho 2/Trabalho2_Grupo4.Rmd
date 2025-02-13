@@ -1,0 +1,290 @@
+---
+title: "Trabalho2 - Análise de redes"
+author: "Grupo 4"
+date: "2025-01-06"
+output: html_document
+---
+
+Métodos usados:
+- Remoção de pontes
+- Fast greedy
+- Louvain  (seed 111)
+- Propagação de etiquetas  (seed 111)
+
+```{r}
+#Importação das bibliotecas utilizadas
+
+library(igraph)
+library(dplyr)
+```
+
+
+```{r}
+# Leitura da rede
+
+rede <- read_graph("Ligações T2.txt", format = ("edgelist"), directed =F)
+plot(rede, vertex.color="red", vertex.label.color="white")
+
+ecount(rede)
+vcount(rede)
+```
+
+# Q1
+
+```{r}
+# Método de remoção de pontes
+
+crp <- cluster_edge_betweenness(rede)
+plot(crp, rede)
+```
+
+
+```{r}
+# Avaliação do método
+
+
+# i) - Nº comunidades obtidas
+length(crp)
+
+# Comunidade a que pertence cada nodo
+membership(crp)
+
+# ii) - Dimensão de cada comunidade
+num_nodos <- sapply(1:length(crp), function(c) {
+  length(which(membership(crp) == c)) 
+})
+
+# iii) - Ligações internas de cada comunidade
+ligacoes_internas <- sapply(1:length(crp), function(c) {
+  comu <- induced_subgraph(rede, which(membership(crp) == c))
+  ecount(comu) 
+})
+
+# iii) - Densidade interna de cada comunidade
+densidade_interna <- sapply(1:length(crp), function(c) {
+  comu <- induced_subgraph(rede, which(membership(crp) == c))
+  edge_count <- ecount(comu)
+  node_count <- vcount(comu)
+  round((edge_count * 2) / (node_count * (node_count - 1)), 2) # Densidade interna
+})
+
+# iv) - Ligações externas de cada comunidade
+ligacoes_externas <- sapply(1:length(crp), function(c) {
+  nodos_dentro <- which(membership(crp) == c)
+  nodos_fora <- setdiff(V(rede), nodos_dentro)
+  sum(sapply(nodos_dentro, function(n) {
+    length(intersect(neighbors(rede, n), nodos_fora))
+  }))
+})
+
+# Resultados
+resultados <- data.frame(
+  Comunidade = 1:length(crp),
+  Numero_Nodos = num_nodos,
+  Ligacoes_Internas = ligacoes_internas,
+  Ligacoes_Externas = ligacoes_externas,
+  Densidade_Interna = densidade_interna
+)
+
+# Exibir os resultados
+print(resultados)
+
+# vi) - Modularidade
+modularity(crp) 
+```
+
+
+
+
+```{r}
+#Método Fast Greedy (optimização de modularidade)
+
+cfg <- cluster_fast_greedy(rede)
+plot(cfg, rede)
+```
+
+
+```{r}
+# Avaliação do método
+
+
+# i) - Nº comunidades obtidas
+length(cfg)
+
+# Comunidade a que pertence cada nodo
+membership(cfg)
+
+# ii) - Dimensão de cada comunidade
+num_nodos <- sapply(1:length(cfg), function(c) {
+  length(which(membership(cfg) == c)) 
+})
+
+# iii) - Ligações internas de cada comunidade
+ligacoes_internas <- sapply(1:length(cfg), function(c) {
+  comu <- induced_subgraph(rede, which(membership(cfg) == c))
+  ecount(comu) 
+})
+
+# iii) - Densidade interna de cada comunidade
+densidade_interna <- sapply(1:length(cfg), function(c) {
+  comu <- induced_subgraph(rede, which(membership(cfg) == c))
+  edge_count <- ecount(comu)
+  node_count <- vcount(comu)
+  round((edge_count * 2) / (node_count * (node_count - 1)), 2) # Densidade interna
+})
+
+# iv) - Ligações externas de cada comunidade
+ligacoes_externas <- sapply(1:length(cfg), function(c) {
+  nodos_dentro <- which(membership(cfg) == c)
+  nodos_fora <- setdiff(V(rede), nodos_dentro)
+  sum(sapply(nodos_dentro, function(n) {
+    length(intersect(neighbors(rede, n), nodos_fora))
+  }))
+})
+
+# Resultados
+resultados <- data.frame(
+  Comunidade = 1:length(cfg),
+  Numero_Nodos = num_nodos,
+  Ligacoes_Internas = ligacoes_internas,
+  Ligacoes_Externas = ligacoes_externas,
+  Densidade_Interna = densidade_interna
+)
+
+# Exibir os resultados
+print(resultados)
+
+# vi) - Modularidade
+modularity(cfg) 
+```
+
+
+
+```{r}
+# Algoritmo de Louvain (optimização de modularidade)
+
+set.seed(111)
+cl <- cluster_louvain(rede)
+plot(cl, rede)
+```
+
+
+```{r}
+# Avaliação do método
+
+
+# i) - Nº comunidades obtidas
+length(cl)
+
+# Comunidade a que pertence cada nodo
+membership(cl)
+
+# ii) - Dimensão de cada comunidade
+num_nodos <- sapply(1:length(cl), function(c) {
+  length(which(membership(cl) == c)) 
+})
+
+# iii) - Ligações internas de cada comunidade
+ligacoes_internas <- sapply(1:length(cl), function(c) {
+  comu <- induced_subgraph(rede, which(membership(cl) == c))
+  ecount(comu) 
+})
+
+# iii) - Densidade interna de cada comunidade
+densidade_interna <- sapply(1:length(cl), function(c) {
+  comu <- induced_subgraph(rede, which(membership(cl) == c))
+  edge_count <- ecount(comu)
+  node_count <- vcount(comu)
+  round((edge_count * 2) / (node_count * (node_count - 1)), 2) # Densidade interna
+})
+
+# iv) - Ligações externas de cada comunidade
+ligacoes_externas <- sapply(1:length(cl), function(c) {
+  nodos_dentro <- which(membership(cl) == c)
+  nodos_fora <- setdiff(V(rede), nodos_dentro)
+  sum(sapply(nodos_dentro, function(n) {
+    length(intersect(neighbors(rede, n), nodos_fora))
+  }))
+})
+
+# Resultados
+resultados <- data.frame(
+  Comunidade = 1:length(cl),
+  Numero_Nodos = num_nodos,
+  Ligacoes_Internas = ligacoes_internas,
+  Ligacoes_Externas = ligacoes_externas,
+  Densidade_Interna = densidade_interna
+)
+
+# Exibir os resultados
+print(resultados)
+
+# vi) - Modularidade
+modularity(cl) 
+```
+
+
+
+```{r}
+# Método propagação de etiquetas
+
+set.seed(111)
+cpe <- cluster_label_prop(rede)
+plot(cpe, rede)
+```
+
+
+```{r}
+# Avaliação do método
+
+
+# i) - Nº comunidades obtidas
+length(cpe)
+
+# Comunidade a que pertence cada nodo
+membership(cpe)
+
+# ii) - Dimensão de cada comunidade
+num_nodos <- sapply(1:length(cpe), function(c) {
+  length(which(membership(cpe) == c)) 
+})
+
+# iii) - Ligações internas de cada comunidade
+ligacoes_internas <- sapply(1:length(cpe), function(c) {
+  comu <- induced_subgraph(rede, which(membership(cpe) == c))
+  ecount(comu) 
+})
+
+# iii) - Densidade interna de cada comunidade
+densidade_interna <- sapply(1:length(cpe), function(c) {
+  comu <- induced_subgraph(rede, which(membership(cpe) == c))
+  edge_count <- ecount(comu)
+  node_count <- vcount(comu)
+  round((edge_count * 2) / (node_count * (node_count - 1)), 2) # Densidade interna
+})
+
+# iv) - Ligações externas de cada comunidade
+ligacoes_externas <- sapply(1:length(cpe), function(c) {
+  nodos_dentro <- which(membership(cpe) == c)
+  nodos_fora <- setdiff(V(rede), nodos_dentro)
+  sum(sapply(nodos_dentro, function(n) {
+    length(intersect(neighbors(rede, n), nodos_fora))
+  }))
+})
+
+# Resultados
+resultados <- data.frame(
+  Comunidade = 1:length(cpe),
+  Numero_Nodos = num_nodos,
+  Ligacoes_Internas = ligacoes_internas,
+  Ligacoes_Externas = ligacoes_externas,
+  Densidade_Interna = densidade_interna
+)
+
+# Exibir os resultados
+print(resultados)
+
+# vi) - Modularidade
+modularity(cpe) 
+```
+
